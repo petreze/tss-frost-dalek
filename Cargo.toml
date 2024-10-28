@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 frost-dalek = { version = "0.2.3" }
-rand = { version = "0.8.5" }
+rand = { version = "0.7" }

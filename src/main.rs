@@ -7,7 +7,7 @@ use frost_dalek::{
     generate_commitment_share_lists
 };
 
-use rand::RngCore;
+use rand::rngs::OsRng;
 
 const NUM_SHARES: u32 = 3;
 const THRESHOLD: u32 = 2;
@@ -60,24 +60,23 @@ fn main() {
         .finish(alice.public_key().unwrap()).unwrap();
     let (bob_group_key, bob_secret_key) = bob_state
         .finish(bob.public_key().unwrap()).unwrap();
-    let (carol_group_key, carol_secret_key) = carol_state
+    let (carol_group_key, _carol_secret_key) = carol_state
         .finish(carol.public_key().unwrap()).unwrap();
 
-    // here we verify that all of the participants yield the same public key for the group
+    // Here we verify that all of the participants yield the same public key for the group
     assert!(alice_group_key == bob_group_key);
     assert!(carol_group_key == bob_group_key);
 
     let alice_public_key = alice_secret_key.to_public();
     let bob_public_key = bob_secret_key.to_public();
-    let carol_public_key = carol_secret_key.to_public();
     
     
     let (alice_public_comshares, mut alice_secret_comshares) =
-        generate_commitment_share_lists(&mut RngCore::next_u64(&mut self), 1, 1);
+        generate_commitment_share_lists(&mut OsRng, 1, 1);
     let (bob_public_comshares, mut bob_secret_comshares) = 
-        generate_commitment_share_lists(&mut RngCore::next_u64(&mut self), 2, 1);
-    let (carol_public_comshares, mut carol_secret_comshares) = 
-        generate_commitment_share_lists(&mut RngCore::next_u64(&mut self), 3, 1);
+        generate_commitment_share_lists(&mut OsRng, 2, 1);
+    let (_carol_public_comshares, mut _carol_secret_comshares) = 
+        generate_commitment_share_lists(&mut OsRng, 3, 1);
 
     let context = b"CONTEXT STRING STOLEN FROM DALEK TEST SUITE";
     let message = b"This is a test of the tsunami alert system. This is only a test.";
@@ -86,26 +85,29 @@ fn main() {
 
     let mut aggregator = SignatureAggregator::new(params, bob_group_key.clone(), &context[..], &message[..]);
     aggregator.include_signer(1, alice_public_comshares.commitments[0], alice_public_key);
-    aggregator.include_signer(2, bob_public_comshares.commitments[0], carol_public_key);
+    aggregator.include_signer(2, bob_public_comshares.commitments[0], bob_public_key);
 
     let signers = aggregator.get_signers();
 
+    // Alice and Bob sign the message with their private keys.
     let alice_partial = alice_secret_key.sign(&message_hash, &alice_group_key,
         &mut alice_secret_comshares, 0, signers).unwrap();
-    let carol_partial = carol_secret_key.sign(&message_hash, &carol_group_key,
-        &mut carol_secret_comshares, 0, signers).unwrap();
+    let bob_partial = bob_secret_key.sign(&message_hash, &bob_group_key,
+        &mut bob_secret_comshares, 0, signers).unwrap();
 
+    // Add Alice's and Bob's partial signatures to the aggregator.
     aggregator.include_partial_signature(alice_partial);
-    aggregator.include_partial_signature(carol_partial);
+    aggregator.include_partial_signature(bob_partial);
 
-
+    // Build the ThresholdSignature containing the partial signatures of both parties.
     let aggregator = aggregator.finalize().unwrap();
     let threshold_signature = aggregator.aggregate().unwrap();
+
+    // Verify that the message is signed with the threshold of this setup. In this scenario, a 2/3 signature is expected.
     let verified = threshold_signature.verify(&alice_group_key, &message_hash).unwrap();
 
 
 
-    /* println!("{:?}", alice_group_key);
-    println!("{:?}", bob_group_key);
-    println!("{:?}", carol_group_key); */
+    println!("{:?}", verified);
+
 }
